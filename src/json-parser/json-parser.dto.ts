@@ -9,9 +9,9 @@
 // }
 export class JsonNodeProps {
   name: string;
-
   type: string;
 
+  value?: string;
   styleText?: Record<string, any>;
   children?: JsonNodeProps[];
 }

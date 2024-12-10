@@ -16,7 +16,30 @@ export class JsonParserService {
       const cssFileResult = await this.jsonListToCss(jsonList);
       if (!cssFileResult) throw new Error('Failed to write CSS file');
 
-      // await this.pushToGit(); // after every convertion have been finished then push it to git.
+      const htmlFileResult = await this.jsonListToHtml(jsonList);
+      if (!htmlFileResult.some((result) => result))
+        throw new Error('Failed to write HTML file');
+
+      const reactFileResult = await this.jsonListToReact(jsonList);
+      if (!reactFileResult) throw new Error('Failed to write React file');
+
+      const gitInitResult = await this.gitInitDesignDist();
+      if (
+        !gitInitResult.result &&
+        gitInitResult.msg.includes('origin') &&
+        gitInitResult.code === 3
+      ) {
+        // already remote url set -> therefore push
+        const gitPushResult = await this.gitPushDesignDist();
+
+        if (!gitPushResult.result && gitPushResult.code === 1) {
+          // no updated made, cannot push
+          return {
+            code: 400,
+            message: 'No updated made, cannot push',
+          };
+        }
+      }
 
       return {
         code: 201,
@@ -27,11 +50,11 @@ export class JsonParserService {
     }
   }
 
-
-
-
-  private tagConverter(figmaName: string): string {
-    // "<typo>-d3" -> this format
+  private tagConverter(
+    figmaName: string,
+    convertType?: 'html' | 'react',
+  ): string {
+    // ex) "<typo>-d3" -> this format
     const tagName = figmaName.split('-')[0];
 
     switch (tagName) {
@@ -49,13 +72,67 @@ export class JsonParserService {
     }
   }
 
-  private jsonToHtml(json: JsonNodeProps): string {
-    return '11';
-  }
-  private jsonToReact(json: JsonNodeProps): string {
-    return '11';
+  private async jsonListToHtml(jsonList: JsonNodeProps[]): Promise<boolean[]> {
+    const htmlArray = jsonList.map((item) => {
+      const tagType = item.name.split('-')[0];
+      const className = item.name.split('-')[1];
+      const tagName = this.tagConverter(item.name);
+      return {
+        htmlValue: `<${tagName} class="${className}">
+                      ${item.value ? item.value : ''}
+                    </${tagName}>`,
+        dir: tagType.replace(/<([^>]+)>/, '$1'),
+        fileName: className,
+      };
+    });
+
+    const htmlFileResult = await Promise.all(
+      htmlArray.map(async (html) => {
+        return await this.writeFile(
+          html.fileName,
+          html.htmlValue,
+          'html',
+          html.dir,
+        );
+      }),
+    );
+
+    return htmlFileResult;
   }
 
+  private async jsonListToReact(jsonList: JsonNodeProps[]): Promise<boolean> {
+    const cssList = jsonList
+      .map((item) => `"${item.name.split('-')[1]}"`)
+      .join(',');
+
+    const fileName = jsonList[0].name.split('-')[0].replace(/<([^>]+)>/, '$1');
+
+    const finalJSX = `
+        import React from "react";
+
+        const ${fileName} = ({children, tag, ...restProps}) => {
+
+        const cssList = [${cssList}];
+        const css = restProps.className ? restProps.className : cssList[0];
+     
+        if (!!tag) {
+          return React.createElement(tag, {...restProps,className: css }, children);
+        }
+
+        return <p {...restProps,className: css }>{children}</p>;
+        };
+        export default ${fileName};
+      `;
+
+    const fileWriteResult = await this.writeFile(
+      fileName,
+      finalJSX,
+      'jsx',
+      'react',
+    );
+
+    return fileWriteResult;
+  }
   private async jsonListToCss(jsonList: JsonNodeProps[]): Promise<boolean> {
     const cssArray = jsonList
       .map((item) => {
@@ -84,8 +161,12 @@ export class JsonParserService {
     fileName: string,
     content: string,
     extension: string,
+    specificDir?: string,
   ): Promise<boolean> {
-    const dirPath = path.join(__dirname, `../design/${extension}`);
+    const dirPath = path.join(
+      __dirname,
+      `../../../hk-home-ui/${specificDir ? `${extension}/${specificDir}` : extension}`,
+    );
 
     const filePath = path.join(dirPath, `${fileName}.${extension}`);
     if (!fs.existsSync(dirPath)) {
@@ -102,91 +183,67 @@ export class JsonParserService {
     });
   }
 
-  private pushToGit() {
-    const distPath = path.join(__dirname, '../../dist/design');
+  private async gitInitDesignDist(): Promise<{
+    result: boolean;
+    msg: string;
+    code: number;
+  }> {
+    const dirPath = path.join(__dirname, '../../../hk-home-ui');
+    const remoteUrl = this.configService.get('GIT_REMOTE_URL');
 
+    try {
+      await this.runGitCommand(
+        [`git init`, `git remote add origin ${remoteUrl}`],
+        dirPath,
+      );
+
+      return {
+        result: true,
+        msg: 'Initialized repository successfully',
+        code: 201,
+      };
+    } catch (error) {
+      console.error('Error initializing repository:', error.message);
+      return { result: false, msg: error.message, code: error.code || 500 };
+    }
+  }
+
+  private async gitPushDesignDist() {
+    const dirPath = path.join(__dirname, '../../../hk-home-ui');
+    const remoteUrl = this.configService.get('GIT_REMOTE_URL');
+
+    try {
+      await this.runGitCommand(
+        [
+          `git remote set-url origin ${remoteUrl}`,
+          `git add .`,
+          `git commit -m "Add generated CSS file ${new Date().toLocaleString()}"`,
+          `git push -u origin master`,
+        ],
+        dirPath,
+      );
+
+      return {
+        result: true,
+        msg: 'Pushed changes to remote successfully',
+        code: 201,
+      };
+    } catch (error) {
+      console.error('Error pushing changes to remote:', error);
+      return { result: false, msg: error.message, code: error.code || 500 };
+    }
+  }
+
+  private runGitCommand(commands: string[], dirPath: string): Promise<string> {
     return new Promise((resolve, reject) => {
-      const remoteUrl = this.configService.get('GIT_REMOTE_URL'); // 원격 저장소 URL 가져오기
-
-      exec(
-        `git remote -v`, // 현재 원격 저장소 확인
-        { cwd: path.dirname(distPath) },
-        (err, stdout) => {
-          if (stdout.includes('origin')) {
-            console.log('Remote origin already exists, skipping init.');
-            // 원격 저장소가 이미 존재하는 경우, init을 건너뜁니다.
-            this.addAndPush(distPath, remoteUrl, resolve, reject);
-          } else {
-            exec(
-              `git init`, // 새로운 Git 저장소 초기화
-              { cwd: path.dirname(distPath) },
-              (err) => {
-                if (err) {
-                  return reject(err);
-                }
-                this.addAndPush(distPath, remoteUrl, resolve, reject);
-              },
-            );
-          }
-        },
-      );
-    });
-  }
-
-  private addAndPush(
-    distPath: string,
-    remoteUrl: string,
-    resolve: Function,
-    reject: Function,
-  ) {
-    exec(
-      `git remote -v`, // 현재 원격 저장소 확인
-      { cwd: path.dirname(distPath) },
-      (err, stdout) => {
-        if (stdout.includes('origin')) {
-          console.log('Remote origin already exists, skipping add.');
-          // 원격 저장소가 이미 존재하는 경우, add를 건너뜁니다.
-          this.commitAndPush(distPath, resolve, reject);
-        } else {
-          exec(
-            `git remote add origin ${remoteUrl}`,
-            { cwd: path.dirname(distPath) },
-            (err) => {
-              if (err) {
-                return reject(err);
-              }
-              this.commitAndPush(distPath, resolve, reject);
-            },
-          );
+      exec(commands.join(' && '), { cwd: dirPath }, (err, stdout, stderr) => {
+        if (err) {
+          console.error(`Git command failed: ${stderr}`);
+          return reject(err);
         }
-      },
-    );
-  }
-
-  private commitAndPush(distPath: string, resolve: Function, reject: Function) {
-    exec(`git add .`, { cwd: path.dirname(distPath) }, (err) => {
-      if (err) {
-        return reject(err);
-      }
-      exec(
-        'git commit -m "Add generated CSS file"',
-        { cwd: path.dirname(distPath) },
-        (err) => {
-          if (err) {
-            return reject(err);
-          }
-          exec(
-            'git push -u origin master',
-            { cwd: path.dirname(distPath) },
-            (err) => {
-              if (err) {
-                return reject(err);
-              }
-              resolve(true);
-            },
-          );
-        },
-      );
+        console.log(`Git command output: ${stdout}`);
+        resolve(stdout);
+      });
     });
   }
 }
