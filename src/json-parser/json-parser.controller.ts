@@ -8,12 +8,9 @@ export class JsonParserController {
 
   @Post()
   async parseJson(@Body() reqBody: ReqBodyJsonParser): Promise<ParsedResult> {
-    console.log('>>>>>>>>>>>>> ', reqBody);
-
-    const { jsonList } = reqBody;
-
-    const result = await this.jsonParserService.parseJson(jsonList);
-
-    return result;
+    // console.log('>>>>>>>>>>>>> ', reqBody);
+    // const { dom, style } = reqBody;
+    // const result = await this.jsonParserService.parseJson(jsonList);
+    // return result;
   }
 }

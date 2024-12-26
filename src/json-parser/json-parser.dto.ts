@@ -1,12 +1,39 @@
 // EndType =["textNode”, “imageNode”]
-
 // {
-//  markupType : “button”, “p”, “span” , “a” , etc…
-//  type: “default”, “i-icon”, “r-icon”, “h-icon”, etc…
-//  children: [
-//     “imageNode”, “textNode”, “imageNode”
-//   ]
+//   "dom": {
+//       "markupType": "button",
+//       "children": [
+//           {
+//               "markupType": "img",
+//               "children": [
+//                   {
+//                       "markupType": "div",
+//                       "children": []
+//                   }
+//               ]
+//           },
+//           {
+//               "markupType": "span",
+//               "children": []
+//           },
+//           {
+//               "markupType": "img",
+//               "children": [
+//                   {
+//                       "markupType": "div",
+//                       "children": []
+//                   }
+//               ]
+//           }
+//       ]
+//   }
 // }
+
+export class DomProps {
+  markupType: string;
+  children: DomProps[];
+}
+
 export class JsonNodeProps {
   name: string;
   type: string;
@@ -17,7 +44,9 @@ export class JsonNodeProps {
 }
 
 export class ReqBodyJsonParser {
-  jsonList: JsonNodeProps[];
+  // jsonList: JsonNodeProps[];
+  dom: DomProps;
+  style: Record<string, any>;
 }
 
 export class ParsedResult {

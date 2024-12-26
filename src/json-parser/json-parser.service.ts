@@ -11,6 +11,8 @@ import { JsonNodeProps, ParsedResult } from './json-parser.dto';
 export class JsonParserService {
   constructor(private configService: ConfigService) {}
 
+  // async parseDomToReact(dom: DomProps): Promise<ParsedResult> {}
+
   async parseJson(jsonList: JsonNodeProps[]): Promise<ParsedResult> {
     try {
       const cssFileResult = await this.jsonListToCss(jsonList);
@@ -52,7 +54,7 @@ export class JsonParserService {
 
   private tagConverter(
     figmaName: string,
-    convertType?: 'html' | 'react',
+    // convertType?: 'html' | 'react',
   ): string {
     // ex) "<typo>-d3" -> this format
     const tagName = figmaName.split('-')[0];
